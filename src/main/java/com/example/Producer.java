@@ -19,7 +19,9 @@ public class Producer {
     @Inject
     private Vertx vertx;
 
-    private AmqpClient client;
+    private String deploymentId;
+
+
 
     void onStart(@Observes StartupEvent ev) {
         LOGGER.info("onStart");
@@ -32,40 +34,17 @@ public class Producer {
     }
 
     private void startAmqpConnection() {
-        AmqpClientOptions options = new AmqpClientOptions()
-                .setHost("localhost")
-                .setPort(5672);
-        // Create a client using its own internal Vert.x instance.
-        //AmqpClient client = AmqpClient.create(options);
-
-        // USe an explicit Vert.x instance.
-        client = AmqpClient.create(vertx, options);
-
-        client.connect(ar -> {
-            if (ar.failed()) {
-                LOGGER.info("Unable to connect to the broker");
-            } else {
-                LOGGER.info("Connection succeeded");
-                AmqpConnection connection = ar.result();
-                connection.createSender("my-queue", done -> {
-                    if (done.failed()) {
-                        LOGGER.info("Unable to create a sender");
-                    } else {
-                        LOGGER.info("Sender created");
-                        AmqpSender sender = done.result();
-                        vertx.setPeriodic(5000, x -> {
-                            LOGGER.info("Sending Hello to consumer");
-                            sender.send(AmqpMessage.create().withBody("Hello from Producer").build());
-                        });
-                    }
-                });
+        ProducerVerticle producerVerticle = new ProducerVerticle();
+        vertx.deployVerticle(producerVerticle, handler ->{
+            if(handler.succeeded()){
+                deploymentId = handler.result();
             }
         });
     }
 
     private void stopAmqpConnection() {
-        client.close(x -> {
-            if (x.succeeded()) {
+        vertx.undeploy(deploymentId, handler->{
+            if(handler.succeeded()){
                 vertx.close();
             }
         });
